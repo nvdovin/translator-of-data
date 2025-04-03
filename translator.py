@@ -2,7 +2,7 @@ import time
 import requests
 import pandas as pd
 import json
-import uuid
+from threading import Thread
 
 translated_df = pd.DataFrame(columns=["action_original", "action_translated"]);
 
@@ -137,14 +137,39 @@ def get_prompt(json_of_data: str):
 #Answer JSON:
 """
 
+def get_respond_from_ai(array_of_jsons, znamenatel):
+    text_json = json.dumps(array_of_jsons, ensure_ascii=False)
+    time.sleep(5)
+    response = request_to_api(request=get_prompt(text_json))
+    try:
+        print(f'{round((translated_df.size / znamenatel) * 100, 5)}%')
+
+        while response.status_code != 200:
+            time.sleep(1)
+            print('[log] Waiting for a sec')
+            response = request_to_api(request=get_prompt(text_json))
+
+        deserializer = json.loads(response.text)
+        for row_json in deserializer:
+            translated_df.loc[len(translated_df)] = [row_json["action_original"], row_json["action_translated"]]
+
+    except Exception as error:
+        print(f'[log] Status code {response.status_code}')
+        print(response.text)
+        print(f"[log] Error is - {error}")
+
+
 def iterater():
     head_bunch = 20
-    chunk_size = 10
+    chunk_size = 5
     i = 0
     array_of_jsons = list()
     df_length = df.size
     znamenatel = df.size
     deserializer = str()
+
+    # max_threads_bunch = 10
+    # threads_alive = 0
 
     for row in df["action"]:
         if i < chunk_size and df_length > 0:
@@ -154,31 +179,14 @@ def iterater():
 
         else:
             i = 0
-            text_json = json.dumps(array_of_jsons, ensure_ascii=False)
+            get_respond_from_ai(array_of_jsons, znamenatel)
             array_of_jsons = list()
-            time.sleep(2)
-            response = request_to_api(request=get_prompt(text_json))
-            try:
-                print(f'{round((translated_df.size / znamenatel) * 100, 5)}%')
 
-                while response.status_code != 200:
-                    time.sleep(1)
-                    print('[log] Waiting for a sec')
-                    response = request_to_api(request=get_prompt(text_json))
-
-                deserializer = json.loads(response.text)
-                for row_json in deserializer:
-                    translated_df.loc[len(translated_df)] = [row_json["action_original"], row_json["action_translated"]]
-
-            except Exception as error:
-                print(f'[log] Status code {response.status_code}')
-                print(response.text)
-                print(f"[log] Error is - {error}")
     for row_json in deserializer:
         translated_df.loc[len(translated_df)] = [row_json["action_original"], row_json["action_translated"]]
     print("[log] Data is translated at all")
+    return translated_df
 
 
-
-iterater()
-translated_df.to_csv('transladed_by_blackbox.csv', sep=';', index=False)
+thanslated_via_threads = iterater()
+thanslated_via_threads.to_csv('transladed_by_blackbox.csv', sep=';', index=False)
